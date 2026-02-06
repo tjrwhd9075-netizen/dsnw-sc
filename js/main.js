@@ -311,7 +311,7 @@ function showQuoteDetail(quote, isAdmin) {
             </div>
             <div class="detail-actions">
                 <button type="button" class="btn btn-primary" id="saveQuoteEdit">저장</button>
-                ${isAdmin ? `<button type="button" class="btn btn-danger" id="deleteQuote">삭제</button>` : ''}
+                <button type="button" class="btn btn-danger" id="deleteQuote">삭제</button>
             </div>
         </form>
     `;
