@@ -106,43 +106,277 @@ scrollDown?.addEventListener('click', () => {
 
 // ===== Quote Form Submission =====
 const quoteForm = document.getElementById('quoteForm');
+const ADMIN_PASSWORD = 'dsnwsc';
 
-quoteForm?.addEventListener('submit', async (e) => {
+// Load quotes from localStorage
+function getQuotes() {
+    const quotes = localStorage.getItem('dsnw_quotes');
+    return quotes ? JSON.parse(quotes) : [];
+}
+
+// Save quotes to localStorage
+function saveQuotes(quotes) {
+    localStorage.setItem('dsnw_quotes', JSON.stringify(quotes));
+}
+
+// Generate unique ID
+function generateId() {
+    return Date.now().toString(36) + Math.random().toString(36).substr(2);
+}
+
+// Format date
+function formatDate(dateString) {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' });
+}
+
+quoteForm?.addEventListener('submit', (e) => {
     e.preventDefault();
     
     // Get form data
-    const formData = {
+    const quoteData = {
+        id: generateId(),
         company: document.getElementById('company').value,
         name: document.getElementById('name').value,
         phone: document.getElementById('phone').value,
         email: document.getElementById('email').value,
         service: document.getElementById('service').value,
         message: document.getElementById('message').value,
+        password: document.getElementById('quotePassword').value,
         status: '접수',
-        created_date: new Date().toISOString()
+        createdAt: new Date().toISOString()
     };
     
-    try {
-        // Submit to API
-        const response = await fetch('tables/quotes', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(formData)
+    // Save to localStorage
+    const quotes = getQuotes();
+    quotes.unshift(quoteData);
+    saveQuotes(quotes);
+    
+    alert('견적 요청이 성공적으로 접수되었습니다.\n빠른 시일 내에 연락드리겠습니다.');
+    quoteForm.reset();
+    
+    // Refresh quote list
+    loadQuoteList();
+});
+
+// ===== Quote History =====
+let selectedQuoteId = null;
+
+function loadQuoteList() {
+    const quoteTableBody = document.getElementById('quoteTableBody');
+    const quoteEmpty = document.getElementById('quoteEmpty');
+    const quoteTable = document.getElementById('quoteTable');
+    
+    if (!quoteTableBody) return;
+    
+    const quotes = getQuotes();
+    
+    if (quotes.length === 0) {
+        quoteTable.style.display = 'none';
+        quoteEmpty.style.display = 'flex';
+        return;
+    }
+    
+    quoteTable.style.display = 'table';
+    quoteEmpty.style.display = 'none';
+    
+    quoteTableBody.innerHTML = quotes.map((quote, index) => `
+        <tr data-id="${quote.id}" class="quote-row">
+            <td>${quotes.length - index}</td>
+            <td>${quote.company}</td>
+            <td>${quote.service}</td>
+            <td>${formatDate(quote.createdAt)}</td>
+            <td><span class="status-badge status-${quote.status === '접수' ? 'pending' : 'done'}">${quote.status}</span></td>
+        </tr>
+    `).join('');
+    
+    // Add click event to rows
+    document.querySelectorAll('.quote-row').forEach(row => {
+        row.addEventListener('click', () => {
+            selectedQuoteId = row.dataset.id;
+            openPasswordModal();
         });
-        
-        if (response.ok) {
-            alert('견적 요청이 성공적으로 접수되었습니다.\n빠른 시일 내에 연락드리겠습니다.');
-            quoteForm.reset();
-        } else {
-            throw new Error('Failed to submit');
-        }
-    } catch (error) {
-        console.error('Error submitting quote:', error);
-        alert('견적 요청 중 오류가 발생했습니다.\n전화로 문의해 주시기 바랍니다.\n☎ 061-XXX-XXXX');
+    });
+}
+
+// Password Modal
+const passwordModal = document.getElementById('passwordModal');
+const closePasswordModal = document.getElementById('closePasswordModal');
+const confirmPassword = document.getElementById('confirmPassword');
+const viewPasswordInput = document.getElementById('viewPassword');
+
+function openPasswordModal() {
+    if (passwordModal) {
+        passwordModal.classList.add('active');
+        viewPasswordInput.value = '';
+        viewPasswordInput.focus();
+    }
+}
+
+function closeModal() {
+    if (passwordModal) {
+        passwordModal.classList.remove('active');
+        selectedQuoteId = null;
+    }
+}
+
+closePasswordModal?.addEventListener('click', closeModal);
+
+passwordModal?.addEventListener('click', (e) => {
+    if (e.target === passwordModal) {
+        closeModal();
     }
 });
+
+viewPasswordInput?.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+        confirmPassword?.click();
+    }
+});
+
+confirmPassword?.addEventListener('click', () => {
+    const enteredPassword = viewPasswordInput.value;
+    const quotes = getQuotes();
+    const quote = quotes.find(q => q.id === selectedQuoteId);
+    
+    if (!quote) {
+        alert('견적 정보를 찾을 수 없습니다.');
+        closeModal();
+        return;
+    }
+    
+    // Check password (admin password or user password)
+    if (enteredPassword === ADMIN_PASSWORD || enteredPassword === quote.password) {
+        closeModal();
+        showQuoteDetail(quote, enteredPassword === ADMIN_PASSWORD);
+    } else {
+        alert('비밀번호가 일치하지 않습니다.');
+        viewPasswordInput.value = '';
+        viewPasswordInput.focus();
+    }
+});
+
+// Show Quote Detail
+function showQuoteDetail(quote, isAdmin) {
+    const quoteViewContainer = document.getElementById('quoteViewContainer');
+    const quoteViewBody = document.getElementById('quoteViewBody');
+    
+    if (!quoteViewContainer || !quoteViewBody) return;
+    
+    quoteViewBody.innerHTML = `
+        <form id="quoteEditForm">
+            <div class="detail-row">
+                <label>회사명</label>
+                <input type="text" id="editCompany" value="${quote.company}" ${isAdmin ? '' : ''}>
+            </div>
+            <div class="detail-row">
+                <label>담당자명</label>
+                <input type="text" id="editName" value="${quote.name}">
+            </div>
+            <div class="detail-row">
+                <label>연락처</label>
+                <input type="text" id="editPhone" value="${quote.phone}">
+            </div>
+            <div class="detail-row">
+                <label>이메일</label>
+                <input type="email" id="editEmail" value="${quote.email}">
+            </div>
+            <div class="detail-row">
+                <label>서비스 종류</label>
+                <select id="editService">
+                    <option value="네트워크 구축" ${quote.service === '네트워크 구축' ? 'selected' : ''}>네트워크 구축</option>
+                    <option value="정보보안" ${quote.service === '정보보안' ? 'selected' : ''}>정보보안</option>
+                    <option value="서버/스토리지" ${quote.service === '서버/스토리지' ? 'selected' : ''}>서버/스토리지</option>
+                    <option value="클라우드" ${quote.service === '클라우드' ? 'selected' : ''}>클라우드</option>
+                    <option value="영상보안(CCTV)" ${quote.service === '영상보안(CCTV)' ? 'selected' : ''}>영상보안(CCTV)</option>
+                    <option value="유지보수" ${quote.service === '유지보수' ? 'selected' : ''}>유지보수</option>
+                    <option value="기타" ${quote.service === '기타' ? 'selected' : ''}>기타</option>
+                </select>
+            </div>
+            <div class="detail-row">
+                <label>상세 내용</label>
+                <textarea id="editMessage" rows="5">${quote.message}</textarea>
+            </div>
+            <div class="detail-row">
+                <label>상태</label>
+                <select id="editStatus" ${isAdmin ? '' : 'disabled'}>
+                    <option value="접수" ${quote.status === '접수' ? 'selected' : ''}>접수</option>
+                    <option value="진행중" ${quote.status === '진행중' ? 'selected' : ''}>진행중</option>
+                    <option value="완료" ${quote.status === '완료' ? 'selected' : ''}>완료</option>
+                </select>
+            </div>
+            <div class="detail-row">
+                <label>요청일</label>
+                <span>${formatDate(quote.createdAt)}</span>
+            </div>
+            <div class="detail-actions">
+                <button type="button" class="btn btn-primary" id="saveQuoteEdit">저장</button>
+                ${isAdmin ? `<button type="button" class="btn btn-danger" id="deleteQuote">삭제</button>` : ''}
+            </div>
+        </form>
+    `;
+    
+    quoteViewContainer.style.display = 'block';
+    quoteViewContainer.dataset.quoteId = quote.id;
+    
+    // Save button
+    document.getElementById('saveQuoteEdit')?.addEventListener('click', () => {
+        saveQuoteEdit(quote.id);
+    });
+    
+    // Delete button (admin only)
+    document.getElementById('deleteQuote')?.addEventListener('click', () => {
+        if (confirm('정말 삭제하시겠습니까?')) {
+            deleteQuote(quote.id);
+        }
+    });
+}
+
+function saveQuoteEdit(quoteId) {
+    const quotes = getQuotes();
+    const quoteIndex = quotes.findIndex(q => q.id === quoteId);
+    
+    if (quoteIndex === -1) {
+        alert('견적 정보를 찾을 수 없습니다.');
+        return;
+    }
+    
+    quotes[quoteIndex] = {
+        ...quotes[quoteIndex],
+        company: document.getElementById('editCompany').value,
+        name: document.getElementById('editName').value,
+        phone: document.getElementById('editPhone').value,
+        email: document.getElementById('editEmail').value,
+        service: document.getElementById('editService').value,
+        message: document.getElementById('editMessage').value,
+        status: document.getElementById('editStatus').value
+    };
+    
+    saveQuotes(quotes);
+    alert('저장되었습니다.');
+    loadQuoteList();
+    
+    document.getElementById('quoteViewContainer').style.display = 'none';
+}
+
+function deleteQuote(quoteId) {
+    let quotes = getQuotes();
+    quotes = quotes.filter(q => q.id !== quoteId);
+    saveQuotes(quotes);
+    
+    alert('삭제되었습니다.');
+    loadQuoteList();
+    
+    document.getElementById('quoteViewContainer').style.display = 'none';
+}
+
+// Close quote view
+document.getElementById('closeQuoteView')?.addEventListener('click', () => {
+    document.getElementById('quoteViewContainer').style.display = 'none';
+});
+
+// Load quote list on page load
+document.addEventListener('DOMContentLoaded', loadQuoteList);
 
 // ===== Notice List =====
 async function loadNotices() {
